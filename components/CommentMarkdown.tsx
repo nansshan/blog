@@ -32,7 +32,7 @@ export function CommentMarkdown({ children }: { children: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        a: ({ children, href }) => {
+        a: ({ children, href }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
           // 处理 @提及 链接
           if (href?.startsWith('mention:')) {
             return <AtMention>{children}</AtMention>

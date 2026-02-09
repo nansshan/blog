@@ -1,6 +1,7 @@
 'use client'
 
 import { useUser } from '@clerk/nextjs'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { clsxm } from '@zolplay/utils'
 import {
   AnimatePresence,
@@ -10,7 +11,6 @@ import {
 } from 'framer-motion'
 import Image from 'next/image'
 import React from 'react'
-import { useMutation, useQuery } from 'react-query'
 import { useReward } from 'react-rewards'
 import TextareaAutosize from 'react-textarea-autosize'
 
@@ -70,24 +70,22 @@ export function GuestbookInput() {
   })
 
   // 预加载用户列表，避免首次输入 @ 时的延迟
-  const { data: users = [] } = useQuery<User[]>(
-    ['guestbook-users'],
-    async () => {
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ['guestbook-users'],
+    queryFn: async () => {
       const res = await fetch('/api/guestbook/users')
       if (!res.ok) throw new Error('Failed to fetch users')
       return res.json()
     },
-    {
-      // 始终启用，页面加载时就获取数据
-      enabled: true,
-      staleTime: 300000, // 5分钟缓存
-      cacheTime: 600000, // 10分钟缓存保留时间
-    }
-  )
+    // 始终启用，页面加载时就获取数据
+    enabled: true,
+    staleTime: 300000, // 5分钟缓存
+    gcTime: 600000, // 10分钟缓存保留时间
+  })
 
-  const { mutate: signGuestbook, isLoading } = useMutation(
-    ['guestbook'],
-    async () => {
+  const { mutate: signGuestbook, isPending: isLoading } = useMutation({
+    mutationKey: ['guestbook'],
+    mutationFn: async () => {
       const res = await fetch('/api/guestbook', {
         method: 'POST',
         headers: {
@@ -100,15 +98,13 @@ export function GuestbookInput() {
       const data: GuestbookDto = await res.json()
       return data
     },
-    {
-      onSuccess: (data) => {
-        setMessage('')
-        setIsPreviewing(false)
-        reward()
-        signBook(data)
-      },
-    }
-  )
+    onSuccess: (data) => {
+      setMessage('')
+      setIsPreviewing(false)
+      reward()
+      signBook(data)
+    },
+  })
 
   const onClickSend = () => {
     if (isLoading) {

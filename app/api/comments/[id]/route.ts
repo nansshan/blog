@@ -1,4 +1,4 @@
-import { clerkClient, currentUser } from '@clerk/nextjs'
+import { clerkClient, currentUser } from '@clerk/nextjs/server'
 import { Ratelimit } from '@upstash/ratelimit'
 import { asc, eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -16,6 +16,7 @@ import NewCommentEmail from '~/emails/NewComment'
 import NewReplyCommentEmail from '~/emails/NewReplyComment'
 import { env } from '~/env.mjs'
 import { url } from '~/lib'
+import { getIP } from '~/lib/ip'
 import { resend } from '~/lib/mail'
 import { redis } from '~/lib/redis'
 import { client } from '~/sanity/lib/client'
@@ -30,13 +31,14 @@ function getKey(id: string) {
   return `comments:${id}`
 }
 
-type Params = { params: { id: string } }
-export async function GET(req: NextRequest, { params }: Params) {
+type Params = { params: Promise<{ id: string }> }
+export async function GET(req: NextRequest, props: Params) {
+  const params = await props.params;
   try {
     const postId = params.id
 
     const { success } = await ratelimit.limit(
-      getKey(postId) + `_${req.ip ?? ''}`
+      getKey(postId) + `_${getIP(req)}`
     )
     if (!success) {
       return new Response('Too Many Requests', {
@@ -60,13 +62,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json(
       data.map(
         ({ id, parentId, ...rest }) =>
-          ({
+          (({
             ...rest,
             id: CommentHashids.encode(id),
-            parentId: parentId ? CommentHashids.encode(parentId) : null,
-          }) as PostIDLessCommentDto
+            parentId: parentId ? CommentHashids.encode(parentId) : null
+          }) as PostIDLessCommentDto)
       )
-    )
+    );
   } catch (error) {
     return NextResponse.json({ error }, { status: 400 })
   }
@@ -80,7 +82,8 @@ const CreateCommentSchema = z.object({
   parentId: z.string().nullable().optional(),
 })
 
-export async function POST(req: NextRequest, { params }: Params) {
+export async function POST(req: NextRequest, props: Params) {
+  const params = await props.params;
   const user = await currentUser()
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
@@ -88,7 +91,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const postId = params.id
 
-  const { success } = await ratelimit.limit(getKey(postId) + `_${req.ip ?? ''}`)
+  const { success } = await ratelimit.limit(getKey(postId) + `_${getIP(req)}`)
   if (!success) {
     return new Response('Too Many Requests', {
       status: 429,
@@ -135,8 +138,9 @@ export async function POST(req: NextRequest, { params }: Params) {
           .from(comments)
           .where(eq(comments.id, parentId as number))
         if (parentUserFromDb && parentUserFromDb.userId !== user.id) {
+          const clerk = await clerkClient()
           const { primaryEmailAddressId, emailAddresses } =
-            await clerkClient.users.getUser(parentUserFromDb.userId)
+            await clerk.users.getUser(parentUserFromDb.userId)
           const primaryEmailAddress = emailAddresses.find(
             (emailAddress) => emailAddress.id === primaryEmailAddressId
           )

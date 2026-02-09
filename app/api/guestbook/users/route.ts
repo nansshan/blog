@@ -1,5 +1,4 @@
-import { currentUser } from '@clerk/nextjs'
-import { clerkClient } from '@clerk/nextjs/server'
+import { clerkClient, currentUser } from '@clerk/nextjs/server'
 import { type NextRequest, NextResponse } from 'next/server'
 
 import { fetchGuestbookMessages } from '~/db/queries/guestbook'
@@ -31,7 +30,8 @@ export async function GET(_req: NextRequest) {
     const users = await Promise.all(
       uniqueUserIds.map(async (userId) => {
         try {
-          const clerkUser = await clerkClient.users.getUser(userId)
+          const clerk = await clerkClient()
+          const clerkUser = await clerk.users.getUser(userId)
           return {
             id: userId,
             name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'Anonymous',

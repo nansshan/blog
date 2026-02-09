@@ -2,11 +2,11 @@
 
 import 'dayjs/locale/zh-cn'
 
+import { useQuery } from '@tanstack/react-query'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import Image from 'next/image'
 import React from 'react'
-import { useQuery } from 'react-query'
 import { useSnapshot } from 'valtio'
 
 import { CommentMarkdown } from '~/components/CommentMarkdown'
@@ -66,18 +66,16 @@ function Message({
 const MessageBlock = React.memo(Message)
 
 export function GuestbookFeeds(props: { messages?: GuestbookDto[] }) {
-  const { data: feed } = useQuery(
-    ['guestbook'],
-    async () => {
+  const { data: feed } = useQuery({
+    queryKey: ['guestbook'],
+    queryFn: async () => {
       const res = await fetch('/api/guestbook')
       const data = await res.json()
       return data as GuestbookDto[]
     },
-    {
-      refetchInterval: 30000,
-      initialData: props.messages ?? [],
-    }
-  )
+    refetchInterval: 30000,
+    initialData: props.messages ?? [],
+  })
   const { messages } = useSnapshot(guestbookState)
   React.useEffect(() => {
     setMessages(feed ?? [])

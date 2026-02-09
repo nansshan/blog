@@ -23,7 +23,7 @@ const NewslettersTemplate = (props: {
         <Section className="max-w-[465px] px-2 text-[14px] leading-loose text-zinc-700">
           <ReactMarkdown
             components={{
-              img: ({ src, alt }) => {
+              img: ({ src, alt }: React.ImgHTMLAttributes<HTMLImageElement>) => {
                 return (
                   <Img
                     src={src}

@@ -4,93 +4,76 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a personal blog website built with Next.js 14 App Router, TypeScript, and Tailwind CSS. The site uses Sanity CMS for content management, PostgreSQL (via Neon) for data storage, and Clerk for authentication.
+Personal blog website (5km.studio) built with Next.js 15 App Router, React 19, TypeScript, and Tailwind CSS. Uses Sanity CMS for content, PostgreSQL (Neon) + Drizzle ORM for data, Clerk v6 for auth, Upstash Redis for rate limiting, and Resend for email.
 
 ## Essential Commands
 
-### Development
 ```bash
-pnpm dev          # Start development server on port 3000
-pnpm dev:turbo    # Start with Turbo mode for faster builds
-pnpm build        # Build for production
-pnpm start        # Start production server
-pnpm lint         # Run ESLint
-```
-
-### Database Management
-```bash
+pnpm dev          # Start dev server (port 3000)
+pnpm dev:turbo    # Dev with Turbo mode
+pnpm build        # Production build
+pnpm lint         # ESLint (uses simple-import-sort, unused-imports plugins)
 pnpm db:generate  # Generate Drizzle migrations
-pnpm db:push      # Push database changes to Neon PostgreSQL
+pnpm db:push      # Push schema to Neon PostgreSQL
+pnpm dev:email    # React Email dev server (port 3333)
 ```
 
-### Email Development
-```bash
-pnpm dev:email    # Start React Email dev server on port 3333
-```
+No test framework is configured. Use `SKIP_ENV_VALIDATION=1` to skip env validation during builds without all env vars set.
 
-## Architecture Overview
+## Architecture
 
-### App Structure
-- **App Router**: All pages are in `/app` using Next.js 14 App Router
-- **Layout Groups**: 
-  - `(main)` - Public-facing pages with shared layout
-  - `(auth)` - Authentication pages (sign-in/sign-up)
-  - `admin` - Admin dashboard for content management
-  - `studio` - Sanity CMS Studio route
+### App Router Layout Groups
 
-### Key Technologies & Patterns
+- `app/(main)/` — Public pages (blog, projects, guestbook, newsletters, about) with shared Header/Footer layout
+- `app/(main)/(auth)/` — Clerk sign-in/sign-up pages
+- `app/admin/` — Protected dashboard (requires `user.publicMetadata.siteOwner`), manages comments, newsletters, subscribers
+- `app/studio/` — Sanity CMS Studio (excluded from middleware matcher)
+- `app/api/` — API routes with rate limiting via Upstash Redis
 
-1. **Content Management**: Sanity CMS v3
-   - Schemas in `/sanity/schemas/`
-   - GROQ queries for fetching content
-   - Portable Text for rich content rendering
+### Path Alias
 
-2. **Database**: PostgreSQL via Neon + Drizzle ORM
-   - Schema: `/db/schema.ts`
-   - Queries: `/db/queries/`
-   - Tables: subscribers, newsletters, comments, guestbook
+`~/` maps to project root (configured in tsconfig.json). All internal imports use `~/` prefix (e.g., `~/lib`, `~/components`, `~/db`).
 
-3. **Authentication**: Clerk
-   - Middleware protection for admin routes
-   - User management for comments/guestbook
+### Content Pipeline
 
-4. **Styling**: Tailwind CSS + Radix UI
-   - Custom components in `/components/ui/`
-   - Dark mode support via next-themes
-   - Typography plugin for prose content
+- **Blog posts & projects**: Managed in Sanity CMS, fetched via GROQ queries in `sanity/queries.ts`
+- **Post types**: Defined in `sanity/schemas/` (post, project, category, blockContent, settings)
+- **Settings singleton**: Site-wide config (projects list, hero photos, resume) stored as Sanity settings document
+- **Rich text**: Rendered with `@portabletext/react`, custom components in `components/portable-text/`
 
-5. **Email**: React Email + Resend
-   - Templates in `/emails/`
-   - Notification system for new comments/subscribers
+### Database Layer
 
-6. **State Management**: 
-   - Valtio for global state
-   - React Query for server state
+- Schema: `db/schema.ts` — 4 tables: `subscribers`, `newsletters`, `comments`, `guestbook`
+- Queries: `db/queries/` — Query functions used by API routes
+- DTOs: `db/dto/` — Data transfer objects with Hashids encoding for public IDs
+- Connection: `db/index.ts` — Neon serverless PostgreSQL
 
-### API Routes Pattern
-- Located in `/app/api/`
-- Rate limiting with Upstash Redis
-- CORS handling for external access
+### Key Patterns
 
-### Environment Variables
-All required environment variables are documented in `.env.example`:
-- Clerk authentication (CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
-- Database connection (DATABASE_URL)
-- Sanity CMS (project ID, dataset)
-- Email service (Resend API key, notification emails)
-- Redis for rate limiting (Upstash credentials)
+- **Env validation**: `env.mjs` uses Zod schemas, validates server/client env vars separately. Import `env` from `~/env.mjs`.
+- **Rate limiting**: `lib/redis.ts` exports `ratelimit` and `redis` (Upstash). Used in all public API routes.
+- **Email notifications**: React Email templates in `emails/`, sent via Resend for new comments/guestbook entries.
+- **ID obfuscation**: Public-facing IDs use Hashids (`db/dto/`), not raw database IDs.
+- **Animations**: Framer Motion used throughout for page transitions and UI interactions.
+- **State**: Valtio for client-side global state, @tanstack/react-query v5 (`app/QueryProvider.tsx`) for server state.
+
+### Middleware
+
+`middleware.ts` runs Clerk `clerkMiddleware` with IP blocking and geo-tracking (Upstash Redis). Geo info read from `x-vercel-ip-*` headers (Next.js 15 removed `req.geo`/`req.ip`). IP obtained via `getIP()` helper from `~/lib/ip`. Public routes are explicitly listed via `createRouteMatcher`; all others require auth.
+
+### ESLint Rules
+
+- `simple-import-sort/imports`: **error** — imports must be auto-sorted
+- `unused-imports/no-unused-imports`: **error** — no unused imports allowed
+- `@typescript-eslint/consistent-type-imports`: **warn** — use `type` keyword for type-only imports
+- `strict: false` in tsconfig
 
 ### Deployment
-- Configured for Vercel deployment
-- Turbo build support enabled
-- Automatic redirects for social media links configured in `next.config.mjs`
 
-## Key Features
-- Blog with MDX support and code highlighting
-- Project showcase with live demos
-- Newsletter system with subscription management
-- Guestbook with authentication
-- Admin dashboard for content moderation
-- Dark mode support
-- WeChat integration for Chinese users
-- RSS feed generation
+- Vercel deployment with Turbo build support
+- Social media redirects configured in `next.config.mjs`
+- RSS feed available at `/feed`, `/rss`, `/rss.xml` (all rewrite to `/feed.xml`)
+
+## Environment Variables
+
+All required vars are in `.env.example`. Key services: Clerk (auth), Neon (DB), Sanity (CMS), Resend (email), Upstash (Redis/rate-limit).

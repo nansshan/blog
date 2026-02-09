@@ -304,7 +304,7 @@ export default defineType({
       title: '块级代码',
       options: {
         withFilename: true,
-      },
+      } as Record<string, unknown>,
     }),
     defineArrayMember({
       name: 'table',

@@ -11,11 +11,12 @@ export const metadata = {
   title: '感谢你的订阅',
 }
 
-export default async function ConfirmPage({
-  params,
-}: {
-  params: { token: string }
-}) {
+export default async function ConfirmPage(
+  props: {
+    params: Promise<{ token: string }>
+  }
+) {
+  const params = await props.params;
   const [subscriber] = await db
     .select()
     .from(subscribers)

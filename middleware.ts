@@ -1,4 +1,4 @@
-import { authMiddleware } from '@clerk/nextjs'
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { type NextRequest, NextResponse } from 'next/server'
 
 import { kvKeys } from '~/config/kv'
@@ -11,8 +11,26 @@ export const config = {
   matcher: ['/((?!_next|studio|.*\\..*).*)'],
 }
 
-async function beforeAuthMiddleware(req: NextRequest) {
-  const { geo, nextUrl } = req
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/studio(.*)',
+  '/api(.*)',
+  '/blog(.*)',
+  '/confirm(.*)',
+  '/projects',
+  '/guestbook',
+  '/newsletters(.*)',
+  '/about',
+  '/rss',
+  '/feed',
+  '/ama',
+  '/unsubscribe',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+])
+
+export default clerkMiddleware(async (auth, req: NextRequest) => {
+  const { nextUrl } = req
 
   const blockedIPs: Array<string> = []
   const ip = getIP(req)
@@ -35,35 +53,21 @@ async function beforeAuthMiddleware(req: NextRequest) {
     return NextResponse.redirect(nextUrl)
   }
 
-  if (geo && !isApi && env.VERCEL_ENV === 'production') {
-    const country = geo.country
-    const city = geo.city
+  // Geo tracking via headers (Next.js 15 removed req.geo)
+  if (!isApi && env.VERCEL_ENV === 'production') {
+    const country = req.headers.get('x-vercel-ip-country') ?? undefined
+    const city = req.headers.get('x-vercel-ip-city') ?? undefined
 
-    const countryInfo = countries.find((x) => x.cca2 === country)
-    if (countryInfo) {
-      const flag = countryInfo.flag
-      await redis.set(kvKeys.currentVisitor, { country, city, flag })
+    if (country) {
+      const countryInfo = countries.find((x) => x.cca2 === country)
+      if (countryInfo) {
+        const flag = countryInfo.flag
+        await redis.set(kvKeys.currentVisitor, { country, city, flag })
+      }
     }
   }
 
-  return NextResponse.next()
-}
-
-export default authMiddleware({
-  beforeAuth: beforeAuthMiddleware,
-  publicRoutes: [
-    '/',
-    '/studio(.*)',
-    '/api(.*)',
-    '/blog(.*)',
-    '/confirm(.*)',
-    '/projects',
-    '/guestbook',
-    '/newsletters(.*)',
-    '/about',
-    '/rss',
-    '/feed',
-    '/ama',
-    '/unsubscribe',
-  ],
+  if (!isPublicRoute(req)) {
+    await auth.protect()
+  }
 })

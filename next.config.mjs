@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 /**
  * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation.
  * This is especially useful for Docker builds.
@@ -6,6 +8,7 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: path.resolve(import.meta.dirname),
   images: {
     remotePatterns: [
       {
@@ -15,10 +18,6 @@ const nextConfig = {
         pathname: `/images/${process.env.NEXT_PUBLIC_SANITY_PROJECT_ID}/**`,
       },
     ],
-  },
-
-  experimental: {
-    taint: true,
   },
 
   redirects() {

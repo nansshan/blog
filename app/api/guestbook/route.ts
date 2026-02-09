@@ -1,5 +1,4 @@
-import { currentUser } from '@clerk/nextjs'
-import { clerkClient } from '@clerk/nextjs/server'
+import { clerkClient, currentUser } from '@clerk/nextjs/server'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -11,6 +10,7 @@ import { guestbook } from '~/db/schema'
 import NewGuestbookEmail from '~/emails/NewGuestbook'
 import { env } from '~/env.mjs'
 import { url } from '~/lib'
+import { getIP } from '~/lib/ip'
 import { resend } from '~/lib/mail'
 import { ratelimit } from '~/lib/redis'
 
@@ -20,7 +20,7 @@ function getKey(id?: string) {
 
 export async function GET(req: NextRequest) {
   try {
-    const { success } = await ratelimit.limit(getKey(req.ip ?? ''))
+    const { success } = await ratelimit.limit(getKey(getIP(req)))
     if (!success) {
       return new Response('Too Many Requests', {
         status: 429,
@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
         // 获取被提及用户的邮箱
         for (const userId of mentionedUserIds) {
           try {
-            const clerkUser = await clerkClient.users.getUser(userId)
+            const clerk = await clerkClient()
+            const clerkUser = await clerk.users.getUser(userId)
             const email = clerkUser.emailAddresses[0]?.emailAddress
             if (email) {
               emailsToNotify.push(email)

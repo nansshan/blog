@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { db } from '~/db'
 import { subscribers } from '~/db/schema'
 import { env } from '~/env.mjs'
+import { getIP } from '~/lib/ip'
 import { redis } from '~/lib/redis'
 
 const unsubscribeSchema = z.object({
@@ -21,7 +22,7 @@ const ratelimit = new Ratelimit({
 export async function POST(req: NextRequest) {
   // 生产环境进行速率限制
   if (env.NODE_ENV === 'production') {
-    const { success } = await ratelimit.limit('unsubscribe_' + (req.ip ?? ''))
+    const { success } = await ratelimit.limit('unsubscribe_' + getIP(req))
     if (!success) {
       return NextResponse.json(
         { error: '请求过于频繁，请稍后再试' },
