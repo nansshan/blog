@@ -10,6 +10,11 @@ export const GuestbookDtoSchema = z.object({
     lastName: z.string().nullable().optional(),
     imageUrl: z.string().nullable().optional(),
   }).nullable().optional(),
+  parentId: z.string().nullable().optional(),
+  parentUserInfo: z.object({
+    firstName: z.string().nullable().optional(),
+    lastName: z.string().nullable().optional(),
+  }).nullable().optional(),
   createdAt: z.date().or(z.string()),
 })
 export type GuestbookDto = z.infer<typeof GuestbookDtoSchema>

@@ -13,17 +13,39 @@ export async function fetchGuestbookMessages({
       userId: guestbook.userId,
       userInfo: guestbook.userInfo,
       message: guestbook.message,
+      parentId: guestbook.parentId,
       createdAt: guestbook.createdAt,
     })
     .from(guestbook)
     .orderBy(desc(guestbook.createdAt))
     .limit(limit)
 
+  // Build a map of raw id -> userInfo for parent author lookup
+  const userInfoMap = new Map<
+    number,
+    { firstName?: string | null; lastName?: string | null }
+  >()
+  for (const item of data) {
+    if (item.userInfo) {
+      userInfoMap.set(
+        item.id,
+        item.userInfo as {
+          firstName?: string | null
+          lastName?: string | null
+        }
+      )
+    }
+  }
+
   return data.map(
-    ({ id, ...rest }) =>
+    ({ id, parentId, ...rest }) =>
       ({
         ...rest,
         id: GuestbookHashids.encode(id),
+        parentId: parentId ? GuestbookHashids.encode(parentId) : null,
+        parentUserInfo: parentId
+          ? (userInfoMap.get(parentId) ?? null)
+          : null,
       } as GuestbookDto)
   )
 }

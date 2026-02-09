@@ -1,4 +1,5 @@
 import { clerkClient, currentUser } from '@clerk/nextjs/server'
+import { eq } from 'drizzle-orm'
 import { type NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -8,6 +9,7 @@ import { type GuestbookDto, GuestbookHashids } from '~/db/dto/guestbook.dto'
 import { fetchGuestbookMessages } from '~/db/queries/guestbook'
 import { guestbook } from '~/db/schema'
 import NewGuestbookEmail from '~/emails/NewGuestbook'
+import NewGuestbookReplyEmail from '~/emails/NewGuestbookReply'
 import { env } from '~/env.mjs'
 import { url } from '~/lib'
 import { getIP } from '~/lib/ip'
@@ -35,6 +37,7 @@ export async function GET(req: NextRequest) {
 
 const SignGuestbookSchema = z.object({
   message: z.string().min(1).max(600),
+  parentId: z.string().nullable().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -52,11 +55,46 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = await req.json()
-    const { message } = SignGuestbookSchema.parse(data)
+    const { message, parentId: hashedParentId } =
+      SignGuestbookSchema.parse(data)
+
+    // Decode parentId from Hashids
+    const [decodedParentId] = GuestbookHashids.decode(hashedParentId ?? '')
+    const parentId = decodedParentId ? (decodedParentId as number) : null
+
+    // Look up parent message info for response and notification
+    let parentUserInfo: {
+      firstName?: string | null
+      lastName?: string | null
+    } | null = null
+    let parentAuthorUserId: string | null = null
+    if (parentId) {
+      const [parentRow] = await db
+        .select({
+          userId: guestbook.userId,
+          userInfo: guestbook.userInfo,
+        })
+        .from(guestbook)
+        .where(eq(guestbook.id, parentId))
+      if (parentRow) {
+        parentAuthorUserId = parentRow.userId
+        if (parentRow.userInfo) {
+          const info = parentRow.userInfo as {
+            firstName?: string | null
+            lastName?: string | null
+          }
+          parentUserInfo = {
+            firstName: info.firstName,
+            lastName: info.lastName,
+          }
+        }
+      }
+    }
 
     const guestbookData = {
       userId: user.id,
       message,
+      parentId,
       userInfo: {
         firstName: user.firstName,
         lastName: user.lastName,
@@ -66,54 +104,98 @@ export async function POST(req: NextRequest) {
 
     // 解析 @ 提及的用户
     const mentionedUsernames = extractMentions(message)
-    const emailsToNotify: string[] = []
-    
+    // Track already-notified emails to avoid duplicates
+    const notifiedEmails = new Set<string>()
+
     // 发送邮件通知
     if (env.RESEND_API_KEY) {
-      // 获取所有留言墙消息以找到对应的用户
+      // Reply notification: notify parent message author
+      if (parentAuthorUserId && parentAuthorUserId !== user.id) {
+          try {
+            const clerk = await clerkClient()
+            const clerkUser = await clerk.users.getUser(parentAuthorUserId)
+            const email = clerkUser.emailAddresses[0]?.emailAddress
+            if (email) {
+              notifiedEmails.add(email)
+              await resend.emails.send({
+                from: emailConfig.from,
+                to: email,
+                subject: '👋 有人回复了你在留言墙的留言',
+                react: NewGuestbookReplyEmail({
+                  link: url(`/guestbook`).href,
+                  userFirstName: user.firstName,
+                  userLastName: user.lastName,
+                  userImageUrl: user.imageUrl,
+                  commentContent: message,
+                }),
+              })
+            }
+          } catch (error) {
+            console.error(
+              `Failed to notify parent author ${parentAuthorUserId}:`,
+              error
+            )
+          }
+      }
+
+      // @ mention notifications
+      const mentionEmails: string[] = []
       if (mentionedUsernames.length > 0) {
         const messages = await fetchGuestbookMessages()
         const mentionedUserIds = new Set<string>()
-        
+
         // 匹配用户名找到用户ID
         for (const msg of messages) {
           if (msg.userInfo) {
-            const fullName = `${msg.userInfo.firstName || ''} ${msg.userInfo.lastName || ''}`.trim()
-            if (mentionedUsernames.some(username => fullName.includes(username))) {
+            const fullName =
+              `${msg.userInfo.firstName || ''} ${msg.userInfo.lastName || ''}`.trim()
+            if (
+              mentionedUsernames.some((username) =>
+                fullName.includes(username)
+              )
+            ) {
               mentionedUserIds.add(msg.userId)
             }
           }
         }
-        
+
         // 获取被提及用户的邮箱
         for (const userId of mentionedUserIds) {
           try {
             const clerk = await clerkClient()
             const clerkUser = await clerk.users.getUser(userId)
             const email = clerkUser.emailAddresses[0]?.emailAddress
-            if (email) {
-              emailsToNotify.push(email)
+            if (email && !notifiedEmails.has(email)) {
+              mentionEmails.push(email)
+              notifiedEmails.add(email)
             }
           } catch (error) {
-            console.error(`Failed to get email for user ${userId}:`, error)
+            console.error(
+              `Failed to get email for user ${userId}:`,
+              error
+            )
           }
         }
       }
-      
-      // 如果没有提及任何人，或者管理员不在被提及列表中，通知管理员
+
+      // 根留言（非回复）时通知管理员
       const adminEmail = env.SITE_NOTIFICATION_EMAIL_TO
-      if (adminEmail && !emailsToNotify.includes(adminEmail)) {
-        emailsToNotify.push(adminEmail)
+      if (!parentId && adminEmail && !notifiedEmails.has(adminEmail)) {
+        mentionEmails.push(adminEmail)
+        notifiedEmails.add(adminEmail)
       }
-      
-      // 发送邮件通知
-      if (emailsToNotify.length > 0) {
+
+      // 发送 @提及 和管理员通知邮件
+      if (mentionEmails.length > 0) {
         await Promise.all(
-          emailsToNotify.map(email =>
+          mentionEmails.map((email) =>
             resend.emails.send({
               from: emailConfig.from,
               to: email,
-              subject: email === adminEmail ? '👋 有人刚刚在留言墙留言了' : '👋 有人在留言墙提到了你',
+              subject:
+                email === adminEmail
+                  ? '👋 有人刚刚在留言墙留言了'
+                  : '👋 有人在留言墙提到了你',
               react: NewGuestbookEmail({
                 link: url(`/guestbook`).href,
                 userFirstName: user.firstName,
@@ -138,6 +220,8 @@ export async function POST(req: NextRequest) {
       {
         ...guestbookData,
         id: GuestbookHashids.encode(newGuestbook.newId),
+        parentId: hashedParentId ?? null,
+        parentUserInfo,
         createdAt: new Date(),
       } satisfies GuestbookDto,
       {

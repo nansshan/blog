@@ -49,6 +49,7 @@ export const guestbook = pgTable('guestbook', {
   userId: varchar('user_id', { length: 200 }).notNull(),
   userInfo: json('user_info'),
   message: text('message').notNull(),
+  parentId: integer('parent_id'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 })

@@ -13,14 +13,26 @@ import Image from 'next/image'
 import React from 'react'
 import { useReward } from 'react-rewards'
 import TextareaAutosize from 'react-textarea-autosize'
+import { useSnapshot } from 'valtio'
 
-import { signBook } from '~/app/(main)/guestbook/guestbook.state'
-import { EyeCloseIcon, EyeOpenIcon, TiltedSendIcon } from '~/assets'
+import {
+  guestbookState,
+  setReplyingTo,
+  signBook,
+} from '~/app/(main)/guestbook/guestbook.state'
+import {
+  EyeCloseIcon,
+  EyeOpenIcon,
+  TiltedSendIcon,
+  UTurnLeftIcon,
+  XSquareIcon,
+} from '~/assets'
 import { CommentMarkdown } from '~/components/CommentMarkdown'
 import { RichLink } from '~/components/links/RichLink'
 import { LoadingSpinner } from '~/components/LoadingSpinner'
 import { ElegantTooltip } from '~/components/ui/Tooltip'
 import { type GuestbookDto } from '~/db/dto/guestbook.dto'
+import { parseDisplayName } from '~/lib/string'
 
 const MAX_MESSAGE_LENGTH = 600
 const REWARDS_ID = 'guestbook-rewards'
@@ -34,6 +46,7 @@ interface User {
 
 export function GuestbookInput() {
   const { user } = useUser()
+  const { replyingTo } = useSnapshot(guestbookState)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const userListRef = React.useRef<HTMLDivElement>(null)
   const [message, setMessage] = React.useState('')
@@ -93,6 +106,7 @@ export function GuestbookInput() {
         },
         body: JSON.stringify({
           message,
+          parentId: replyingTo?.id ?? null,
         }),
       })
       const data: GuestbookDto = await res.json()
@@ -101,6 +115,7 @@ export function GuestbookInput() {
     onSuccess: (data) => {
       setMessage('')
       setIsPreviewing(false)
+      setReplyingTo(null)
       reward()
       signBook(data)
     },
@@ -209,6 +224,17 @@ export function GuestbookInput() {
     )
   }, [users, searchQuery])
 
+  // Auto-focus and scroll when entering reply mode
+  React.useEffect(() => {
+    if (replyingTo && textareaRef.current) {
+      textareaRef.current.focus()
+      textareaRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+    }
+  }, [replyingTo])
+
   // 确保选中的项目在可视区域内
   React.useEffect(() => {
     if (userListRef.current && showUserList) {
@@ -306,6 +332,33 @@ export function GuestbookInput() {
       </div>
 
       <div className="z-10 ml-2 flex-1 shrink-0 md:ml-4">
+        <AnimatePresence>
+          {replyingTo && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-2 flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            >
+              <UTurnLeftIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                回复{' '}
+                <b>
+                  {parseDisplayName(
+                    replyingTo.userInfo || {}
+                  )}
+                </b>
+              </span>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="ml-auto shrink-0 rounded p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              >
+                <XSquareIcon className="h-3.5 w-3.5" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="relative">
           {isPreviewing ? (
             <div
@@ -320,7 +373,13 @@ export function GuestbookInput() {
               className="block w-full shrink-0 resize-none border-0 bg-transparent p-0 text-sm leading-6 text-zinc-800 placeholder-zinc-400 outline-none transition-[height] will-change-[height] focus:outline-none focus:ring-0 dark:text-zinc-200 dark:placeholder-zinc-500"
               value={message}
               onChange={handleInputChange}
-              placeholder={isLoading ? "正在发送中..." : "说点什么吧，万一火不了呢..."}
+              placeholder={
+                isLoading
+                  ? '正在发送中...'
+                  : replyingTo
+                    ? `回复 ${parseDisplayName(replyingTo.userInfo || {})}...`
+                    : '说点什么吧，万一火不了呢...'
+              }
               onKeyDown={handleKeyDown}
               maxRows={8}
               autoFocus

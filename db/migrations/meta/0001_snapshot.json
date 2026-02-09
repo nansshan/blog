@@ -1,4 +1,6 @@
 {
+  "id": "303bb417-5567-4f3a-bac3-a8c46fa41492",
+  "prevId": "82acc33b-5546-4868-b62d-fd2ed4cc4b20",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -59,6 +61,7 @@
       },
       "indexes": {
         "post_idx": {
+          "name": "post_idx",
           "columns": [
             {
               "expression": "post_id",
@@ -67,19 +70,18 @@
               "nulls": "last"
             }
           ],
-          "with": {},
-          "name": "post_idx",
           "isUnique": false,
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "isRLSEnabled": false,
-      "checkConstraints": {}
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
     "public.guestbook": {
       "name": "guestbook",
@@ -109,6 +111,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -129,8 +137,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "isRLSEnabled": false,
-      "checkConstraints": {}
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
     "public.newsletters": {
       "name": "newsletters",
@@ -180,8 +188,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "isRLSEnabled": false,
-      "checkConstraints": {}
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
     "public.subscribers": {
       "name": "subscribers",
@@ -230,21 +238,19 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "isRLSEnabled": false,
-      "checkConstraints": {}
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {},
   "schemas": {},
-  "_meta": {
-    "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "id": "82acc33b-5546-4868-b62d-fd2ed4cc4b20",
-  "prevId": "00000000-0000-0000-0000-000000000000",
   "sequences": {},
+  "roles": {},
   "policies": {},
   "views": {},
-  "roles": {}
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
 }
