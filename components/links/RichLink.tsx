@@ -17,12 +17,6 @@ type RichLinkProps = LinkProps &
   }
 export const RichLink = React.forwardRef<HTMLAnchorElement, RichLinkProps>(
   ({ children, href, favicon = true, className, ...props }, ref) => {
-    const hrefHost = new URL(href).host
-    const faviconUrl = React.useMemo(
-      () => (href.startsWith('http') ? `/api/favicon?url=${hrefHost}` : null),
-      [href, hrefHost]
-    )
-
     // if it's a relative link, use a fallback Link
     if (!href.startsWith('http')) {
       return (
@@ -31,6 +25,9 @@ export const RichLink = React.forwardRef<HTMLAnchorElement, RichLinkProps>(
         </Link>
       )
     }
+
+    const hrefHost = new URL(href).host
+    const faviconUrl = favicon ? `/api/favicon?url=${hrefHost}` : null
 
     return (
       <Link
