@@ -1,5 +1,8 @@
+import { type ComponentType } from 'react'
 import { definePlugin, type DocumentDefinition } from 'sanity'
 import { type StructureResolver } from 'sanity/desk'
+
+import { TagIcon } from '~/assets'
 
 export const settingsPlugin = definePlugin<{ type: string }>(({ type }) => {
   return {
@@ -45,9 +48,15 @@ export const settingsStructure = (
         )
 
     // The default root list items (except custom ones)
-    const defaultListItems = S.documentTypeListItems().filter(
-      (listItem) => listItem.getId() !== typeDef.name
-    )
+    const defaultListItems = S.documentTypeListItems()
+      .filter((listItem) => listItem.getId() !== typeDef.name)
+      .map((listItem) => {
+        // Fix media.tag icon size (plugin uses viewBox 512x512, should be 24x24)
+        if (listItem.getId() === 'media.tag') {
+          return listItem.icon(TagIcon as ComponentType)
+        }
+        return listItem
+      })
 
     return S.list()
       .id('root')
