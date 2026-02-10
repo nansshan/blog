@@ -40,6 +40,7 @@ No test framework is configured. Use `SKIP_ENV_VALIDATION=1` to skip env validat
 - **Post types**: Defined in `sanity/schemas/` (post, project, category, blockContent, settings)
 - **Settings singleton**: Site-wide config (projects list, hero photos, resume) stored as Sanity settings document
 - **Rich text**: Rendered with `@portabletext/react`, custom components in `components/portable-text/`
+- **Markdown import**: Post documents have "导入 Markdown" action in Studio. Conversion pipeline: Markdown → HTML (unified/remark/rehype) → Portable Text (`@portabletext/block-tools`). Supports GFM tables, fenced code blocks, LaTeX math, images. See `sanity/lib/markdownToPortableText.ts` and `sanity/plugins/importMarkdown.tsx`.
 
 ### Database Layer
 

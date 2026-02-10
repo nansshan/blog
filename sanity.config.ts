@@ -10,6 +10,7 @@ import { structureTool } from 'sanity/structure'
 import { latexInput } from 'sanity-plugin-latex-input'
 import { media } from 'sanity-plugin-media'
 
+import ImportMarkdownAction from '~/sanity/plugins/importMarkdown'
 import { settingsPlugin, settingsStructure } from '~/sanity/plugins/settings'
 
 // Go to https://www.sanity.io/docs/api-versioning to learn how API versioning works
@@ -23,6 +24,14 @@ export default defineConfig({
   dataset,
   // Add and edit the content schema in the './sanity/schema' folder
   schema,
+  document: {
+    actions: (prev, { schemaType }) => {
+      if (schemaType === 'post') {
+        return [...prev, ImportMarkdownAction]
+      }
+      return prev
+    },
+  },
   plugins: [
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
