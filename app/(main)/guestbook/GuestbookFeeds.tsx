@@ -21,24 +21,90 @@ import { guestbookState, setMessages, setReplyingTo } from './guestbook.state'
 
 dayjs.extend(relativeTime)
 
+// -- Thread grouping utilities --
+
+type MessageThread = {
+  root: GuestbookDto
+  replies: GuestbookDto[]
+}
+
+function groupMessagesIntoThreads(
+  messages: GuestbookDto[]
+): MessageThread[] {
+  const byId = new Map<string, GuestbookDto>()
+  for (const msg of messages) {
+    byId.set(msg.id, msg)
+  }
+
+  // Walk up parentId chain to find the root ancestor
+  function findRoot(msg: GuestbookDto): GuestbookDto {
+    let current = msg
+    const visited = new Set<string>()
+    while (
+      current.parentId &&
+      byId.has(current.parentId) &&
+      !visited.has(current.parentId)
+    ) {
+      visited.add(current.id)
+      current = byId.get(current.parentId)!
+    }
+    return current
+  }
+
+  const roots = new Map<string, GuestbookDto>()
+  const replyMap = new Map<string, GuestbookDto[]>()
+
+  for (const msg of messages) {
+    const root = findRoot(msg)
+    if (!roots.has(root.id)) {
+      roots.set(root.id, root)
+      replyMap.set(root.id, [])
+    }
+    if (root.id !== msg.id) {
+      replyMap.get(root.id)?.push(msg)
+    }
+  }
+
+  const threads: MessageThread[] = []
+  for (const [rootId, root] of roots) {
+    const replies = replyMap.get(rootId) ?? []
+    replies.sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )
+    threads.push({ root, replies })
+  }
+
+  // Sort threads descending by root createdAt (newest at top)
+  threads.sort(
+    (a, b) =>
+      new Date(b.root.createdAt).getTime() -
+      new Date(a.root.createdAt).getTime()
+  )
+
+  return threads
+}
+
+// -- Components --
+
 function Message({
   message,
-  idx,
-  length,
+  showConnector,
+  avatarFallbackIndex,
   onReply,
 }: {
   message: GuestbookDto
-  idx: number
-  length: number
+  showConnector: boolean
+  avatarFallbackIndex: number
   onReply: (message: GuestbookDto) => void
 }) {
   const [highlighted, setHighlighted] = React.useState(false)
 
   return (
-    <li id={message.id} className="group/message relative pb-8">
-      {idx !== length - 1 && (
+    <div id={message.id} className="group/message relative pb-2">
+      {showConnector && (
         <span
-          className="absolute left-5 top-16 -ml-px h-[calc(100%-4.5rem)] w-0.5 rounded bg-zinc-200 dark:bg-zinc-800"
+          className="absolute left-5 top-16 -ml-px h-[calc(100%-4rem)] w-px bg-zinc-200/80 dark:bg-zinc-800/80"
           aria-hidden="true"
         />
       )}
@@ -52,7 +118,7 @@ function Message({
           <Image
             src={
               message.userInfo?.imageUrl ??
-              `/avatars/avatar_${(idx % 8) + 1}.png`
+              `/avatars/avatar_${(avatarFallbackIndex % 8) + 1}.png`
             }
             alt=""
             width={40}
@@ -110,11 +176,10 @@ function Message({
           setTimeout(() => setHighlighted(false), 1500)
         }}
       />
-    </li>
+    </div>
   )
 }
 
-// Listen for highlight events on this message element
 function HighlightListener({
   id,
   onHighlight,
@@ -136,6 +201,34 @@ function HighlightListener({
 
 const MessageBlock = React.memo(Message)
 
+function ThreadGroup({
+  thread,
+  threadIndex,
+  onReply,
+}: {
+  thread: MessageThread
+  threadIndex: number
+  onReply: (message: GuestbookDto) => void
+}) {
+  const allMessages = [thread.root, ...thread.replies]
+
+  return (
+    <li>
+      {allMessages.map((msg, idx) => (
+        <MessageBlock
+          key={msg.id}
+          message={msg}
+          showConnector={idx < allMessages.length - 1}
+          avatarFallbackIndex={threadIndex + idx}
+          onReply={onReply}
+        />
+      ))}
+    </li>
+  )
+}
+
+const ThreadGroupBlock = React.memo(ThreadGroup)
+
 export function GuestbookFeeds(props: { messages?: GuestbookDto[] }) {
   const { data: feed } = useQuery({
     queryKey: ['guestbook'],
@@ -152,21 +245,23 @@ export function GuestbookFeeds(props: { messages?: GuestbookDto[] }) {
     setMessages(feed ?? [])
   }, [feed])
 
+  const threads = React.useMemo(
+    () => groupMessagesIntoThreads(messages as GuestbookDto[]),
+    [messages]
+  )
+
   const handleReply = React.useCallback((message: GuestbookDto) => {
     setReplyingTo(message)
   }, [])
 
   return (
     <div className="relative mt-12">
-      <div className="absolute inset-0 flex items-center" aria-hidden="true" />
-
-      <ul role="list" className="-mb-8 px-1 md:px-4">
-        {messages.map((message, idx) => (
-          <MessageBlock
-            key={message.id}
-            message={message as GuestbookDto}
-            idx={idx}
-            length={messages.length}
+      <ul role="list" className="space-y-8 px-1 md:px-4">
+        {threads.map((thread, idx) => (
+          <ThreadGroupBlock
+            key={thread.root.id}
+            thread={thread}
+            threadIndex={idx}
             onReply={handleReply}
           />
         ))}
